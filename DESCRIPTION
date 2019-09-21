@@ -1,0 +1,10 @@
+Package: Prometheus
+Type: Package
+Title: What the package does (short line)
+Version: 0.0.1
+Date: 2019-09-21
+Author: Who wrote it
+Maintainer: Who to complain to <yourfault@somewhere.net>
+Description: More about what it does (maybe more than one line)
+License: Apache 2.0
+RoxygenNote: 6.1.1
