@@ -9,8 +9,6 @@ smallOutputFolder <- file.path("~/myResults", "myResults","synpufSmall")
 bigToSmallOutputFolder  <- file.path("~/myResults", "synpufBigToSmall")
 SmallToBigOutputFolder  <- file.path("~/myResults", "synpufSmallToBig")
 
-#outputFolder <- file.path("/home/ohdsikorea110", "myResults","metisExternal")
-
 bigCdmDatabaseSchema <- "CMSDESynPUF23m"
 bigCohortDatabaseSchema <- "CMSDESynPUF23mresults"
 
@@ -139,7 +137,7 @@ cmAnalysis2 <- CohortMethod::createCmAnalysis(analysisId = 2,
 
 cmAnalysisList <- list(cmAnalysis1
                        #, cmAnalysis2
-                       )
+)
 
 targetId = 1314002
 comparatorId = 1308216
