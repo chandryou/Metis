@@ -1,16 +1,15 @@
 ##Parameter settings
 connectionDetails <- DatabaseConnector::createConnectionDetails()
 
-options(fftempdir ="/home/ohdsikorea110/fftemp")
+options(fftempdir ="s:/FFtemp")
 
-bigOutputFolder <- file.path("/home/ohdsikorea110", "myResults","synpufBig")
-mediumOutputFolder <- file.path("/home/ohdsikorea110", "myResults","synpufMedium")
-smallOutputFolder <- file.path("/home/ohdsikorea110", "myResults","synpufSmall")
-bigToSmallOutputFolder  <- file.path("/home/ohdsikorea110", "myResults","synpufBigToSmall")
-SmallToBigOutputFolder  <- file.path("/home/ohdsikorea110", "myResults","synpufSmallToBig")
+bigOutputFolder <- file.path("~/myResults", "synpufBig")
+mediumOutputFolder <- file.path("~/myResults","synpufMedium")
+smallOutputFolder <- file.path("~/myResults", "myResults","synpufSmall")
+bigToSmallOutputFolder  <- file.path("~/myResults", "synpufBigToSmall")
+SmallToBigOutputFolder  <- file.path("~/myResults", "synpufSmallToBig")
 
 #outputFolder <- file.path("/home/ohdsikorea110", "myResults","metisExternal")
-
 
 bigCdmDatabaseSchema <- "CMSDESynPUF23m"
 bigCohortDatabaseSchema <- "CMSDESynPUF23mresults"
@@ -26,7 +25,7 @@ nestingTable <- "nesting_metis"
 oracleTempSchema <- NULL
 cdmVersion<-"5"
 
-##Cohort generation in big and small dataset
+##Cohort generation in big, medium, and small dataset
 
 MethodEvaluation::createReferenceSetCohorts(connectionDetails,
                                             oracleTempSchema = oracleTempSchema,
@@ -54,11 +53,6 @@ MethodEvaluation::createReferenceSetCohorts(connectionDetails,
                                             nestingDatabaseSchema = smallCohortDatabaseSchema,
                                             nestingTable = nestingTable,
                                             referenceSet = "ohdsiMethodsBenchmark")
-#library(MethodEvaluation)
-#data(euadrReferenceSet)
-#data(omopReferenceSet)
-#data(ohdsiNegativeControls)
-
 
 
 ## Positivie Controls
@@ -193,7 +187,7 @@ tcos <- createTargetComparatorOutcomes(targetId = targetId, #1124300
 targetComparatorOutcomesList <- list(tcos)
 
 
-##PS matching  in big dataset
+##PS matching in big, medium, and small dataset
 result <- CohortMethod::runCmAnalyses(connectionDetails = connectionDetails,
                                       cdmDatabaseSchema = bigCdmDatabaseSchema,
                                       exposureDatabaseSchema = bigCdmDatabaseSchema,
@@ -201,6 +195,28 @@ result <- CohortMethod::runCmAnalyses(connectionDetails = connectionDetails,
                                       outcomeDatabaseSchema = bigCohortDatabaseSchema,
                                       outcomeTable = outcomeTable,
                                       outputFolder = bigOutputFolder,
+                                      cdmVersion = cdmVersion,
+                                      cmAnalysisList = cmAnalysisList,
+                                      targetComparatorOutcomesList = targetComparatorOutcomesList,
+                                      refitPsForEveryOutcome = FALSE,
+                                      refitPsForEveryStudyPopulation = FALSE,
+                                      getDbCohortMethodDataThreads = 1,
+                                      createPsThreads = 1,
+                                      psCvThreads = 16,
+                                      createStudyPopThreads = 3,
+                                      trimMatchStratifyThreads = 5,
+                                      prefilterCovariatesThreads = 3,
+                                      fitOutcomeModelThreads = 5,
+                                      outcomeCvThreads = 10,
+                                      outcomeIdsOfInterest =outcomeIdsOfInterest) #192671
+
+result <- CohortMethod::runCmAnalyses(connectionDetails = connectionDetails,
+                                      cdmDatabaseSchema = mediumCdmDatabaseSchema,
+                                      exposureDatabaseSchema = mediumCdmDatabaseSchema,
+                                      exposureTable = "drug_era",
+                                      outcomeDatabaseSchema = mediumCohortDatabaseSchema,
+                                      outcomeTable = outcomeTable,
+                                      outputFolder = mediumOutputFolder,
                                       cdmVersion = cdmVersion,
                                       cmAnalysisList = cmAnalysisList,
                                       targetComparatorOutcomesList = targetComparatorOutcomesList,
@@ -254,10 +270,20 @@ bigBalance <- CohortMethod::computeCovariateBalance(bigMatchedPop, bigCohortMeth
 CohortMethod::plotCovariateBalanceScatterPlot(bigBalance, showCovariateCountLabel = TRUE, showMaxLabel = TRUE)
 CohortMethod::plotCovariateBalanceOfTopVariables(bigBalance)
 
-# psModel <- CohortMethod::getPsModel(
-#   propensityScore =
-#     propensityScore,
-#   cohortMethodData = CohortMethod::loadCohortMethodData(file.path(bigOutputFolder, "CmData_l1_t1124300_c1118084")))
+###check the result from medium dataset
+mediumPropensityScore <- readRDS(file.path(mediumOutputFolder, sprintf("Ps_l1_p1_t%d_c%d.rds",targetId,comparatorId)))
+mediumCohortMethodData <-  CohortMethod::loadCohortMethodData(file.path(mediumOutputFolder, sprintf("CmData_l1_t%d_c%d",targetId,comparatorId)))
+CohortMethod::computePsAuc(mediumPropensityScore)
+#AUROC 
+CohortMethod::plotPs(mediumPropensityScore, showCountsLabel = TRUE, showAucLabel = TRUE, showEquiposeLabel = TRUE)
+
+mediumMatchedPop <- CohortMethod::matchOnPs(mediumPropensityScore, caliperScale = "standardized logit", maxRatio = 1)
+CohortMethod::plotPs(mediumMatchedPop, mediumPropensityScore)
+CohortMethod::drawAttritionDiagram(mediumMatchedPop)
+
+mediumBalance <- CohortMethod::computeCovariateBalance(mediumMatchedPop, mediumCohortMethodData)
+CohortMethod::plotCovariateBalanceScatterPlot(mediumBalance, showCovariateCountLabel = TRUE, showMaxLabel = TRUE)
+CohortMethod::plotCovariateBalanceOfTopVariables(mediumBalance)
 
 ###check the result from Small dataset
 smallPropensityScore <- readRDS(file.path(smallOutputFolder, sprintf("Ps_l1_p1_t%d_c%d.rds",targetId,comparatorId)))
@@ -274,25 +300,30 @@ smallBalance <- CohortMethod::computeCovariateBalance(smallMatchedPop, smallCoho
 CohortMethod::plotCovariateBalanceScatterPlot(smallBalance, showCovariateCountLabel = TRUE, showMaxLabel = TRUE)
 CohortMethod::plotCovariateBalanceOfTopVariables(smallBalance)
 
-##Use PS for big dataset in small dataset
-i=1
-smallStudyPop <- readRDS(file.path(smallOutputFolder, sprintf("StudyPop_l1_s1_t%d_c%d_o%d.rds",targetId,comparatorId,outcomeIdsOfInterest[i])))
+##extract PS model
 
 bigPsModel <- CohortMethod::getPsModel(
   propensityScore =    bigPropensityScore,
   cohortMethodData = bigCohortMethodData)
+
+mediumPsModel <- CohortMethod::getPsModel(
+  propensityScore =    mediumPropensityScore,
+  cohortMethodData = mediumCohortMethodData)
+
 smallPsModel <- CohortMethod::getPsModel(
   propensityScore =    smallPropensityScore,
   cohortMethodData = smallCohortMethodData)
 
-library(CohortMethod)
-bigToSmallPropensityScore <- predictPs(psModel=bigPsModel,
-                             population = smallStudyPop,
-                             cohortMethodData = smallCohortMethodData)
+##Use PS for big dataset in small dataset
+smallStudyPop <- readRDS(file.path(smallOutputFolder, sprintf("StudyPop_l1_s1_t%d_c%d_o%d.rds",targetId,comparatorId,outcomeIdsOfInterest[i])))
 
-smallToSmallpropensityScore <- predictPs(psModel=smallPsModel,
-                                         population = smallStudyPop,
-                                         cohortMethodData = smallCohortMethodData)
+bigToSmallPropensityScore <- Metis::predictPs(psModel=bigPsModel,
+                                              population = smallStudyPop,
+                                              cohortMethodData = smallCohortMethodData)
+
+smallToSmallpropensityScore <- Metis::predictPs(psModel=smallPsModel,
+                                                population = smallStudyPop,
+                                                cohortMethodData = smallCohortMethodData)
 
 CohortMethod::computePsAuc(bigToSmallPropensityScore)
 #AUROC 0.656746
@@ -309,28 +340,8 @@ CohortMethod::drawAttritionDiagram(bigToSmallMatchedPop)
 CohortMethod::drawAttritionDiagram(smallToSmallMatchedPop)
 
 bigToSmallBalance <- CohortMethod::computeCovariateBalance(bigToSmallMatchedPop, smallCohortMethodData)
-CohortMethod::plotCovariateBalanceScatterPlot(bigToSmallBalance, showCovariateCountLabel = TRUE, showMaxLabel = TRUE)
-#max: 0.40
-CohortMethod::plotCovariateBalanceOfTopVariables(bigToSmallBalance)
-hist(bigToSmallBalance$afterMatchingSd, xlim = c(0,1.5))
-mean(bigToSmallBalance$afterMatchingSd, na.rm=TRUE)
-
-head(samllToSmallBalance)
-samllToSmallBalanceUn<-samllToSmallBalance[abs(samllToSmallBalance$afterMatchingStdDiff)>0.1,]
-hist(samllToSmallBalanceUn$afterMatchingStdDiff, xlim = c(-0.6,0.6))
-nrow(samllToSmallBalanceUn)
-
-bigToSmallBalanceUn<-bigToSmallBalance[abs(bigToSmallBalance$afterMatchingStdDiff)>0.1,]
-hist(bigToSmallBalanceUn$afterMatchingStdDiff, xlim = c(-0.6,0.6))
-nrow(bigToSmallBalanceUn)
-
-hist(samllToSmallBalance$afterMatchingStdDiff, xlim = c(-0.6,0.6))
-hist(bigToSmallBalance$afterMatchingStdDiff, xlim = c(-0.6,0.6))
-
-
 samllToSmallBalance <- CohortMethod::computeCovariateBalance(smallToSmallMatchedPop, smallCohortMethodData)
-CohortMethod::plotCovariateBalanceScatterPlot(samllToSmallBalance, showCovariateCountLabel = TRUE, showMaxLabel = TRUE)
-#max: 0.58
-CohortMethod::plotCovariateBalanceOfTopVariables(samllToSmallBalance)
-mean(samllToSmallBalance$afterMatchingSd, na.rm=TRUE)
 
+
+CohortMethod::plotCovariateBalanceScatterPlot(bigToSmallBalance, showCovariateCountLabel = TRUE, showMaxLabel = TRUE)
+CohortMethod::plotCovariateBalanceOfTopVariables(samllToSmallBalance, showCovariateCountLabel = TRUE, showMaxLabel = TRUE)
