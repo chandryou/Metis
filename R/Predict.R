@@ -53,7 +53,7 @@ predictPs <- function(psModel,
   if(sum(coefficients$beta != 0)>0){
     prediction <- merge(covariates, ff::as.ffdf(coefficients), by = "covariateId")
     prediction$value <- prediction$covariateValue * prediction$beta
-    prediction <- bySumFf(prediction$value, prediction$rowId)
+    prediction <- PatientLevelPrediction::bySumFf(prediction$value, prediction$rowId)
     colnames(prediction) <- c("rowId", "value")
     # prediction <- merge(population, ff::as.ram(prediction), by = "rowId", all.x = TRUE)
     prediction <- merge(ff::as.ram(population), prediction, by ="rowId", all.x = TRUE)

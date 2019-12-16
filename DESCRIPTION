@@ -1,10 +1,10 @@
-Package: Prometheus
+Package: Metis
 Type: Package
-Title: What the package does (short line)
+Title: Methods to Enable Transferring Information across OHDSI
 Version: 0.0.1
 Date: 2019-09-21
-Author: Who wrote it
-Maintainer: Who to complain to <yourfault@somewhere.net>
+Author: Seng Chan You <applegna@gmail.com>
+Maintainer: Seng Chan You <applegna@gmail.com>
 Description: More about what it does (maybe more than one line)
 License: Apache 2.0
 RoxygenNote: 6.1.1
