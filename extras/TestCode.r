@@ -313,7 +313,7 @@ smallPsModel <- CohortMethod::getPsModel(
   cohortMethodData = smallCohortMethodData)
 
 ##Use PS for big dataset in small dataset
-smallStudyPop <- readRDS(file.path(smallOutputFolder, sprintf("StudyPop_l1_s1_t%d_c%d_o%d.rds",targetId,comparatorId,outcomeIdsOfInterest[i])))
+smallStudyPop <- readRDS(file.path(smallOutputFolder, sprintf("StudyPop_l1_s1_t%d_c%d_o%d.rds",targetId,comparatorId,outcomeIdsOfInterest[1])))
 
 bigToSmallPropensityScore <- Metis::predictPs(psModel=bigPsModel,
                                               population = smallStudyPop,
