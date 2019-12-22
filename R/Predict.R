@@ -94,3 +94,17 @@ limitCovariatesToPopulation <- function(covariates, rowIds) {
   }
   return(covariates)
 }
+
+computePreferenceScore <- function(data, unfilteredData = NULL) {
+  if (is.null(unfilteredData)) {
+    proportion <- sum(data$treatment)/nrow(data)
+  } else {
+    proportion <- sum(unfilteredData$treatment)/nrow(unfilteredData)
+  }
+  propensityScore <- data$propensityScore
+  propensityScore[propensityScore > 0.9999999] <- 0.9999999
+  x <- exp(log(propensityScore/(1 - propensityScore)) - log(proportion/(1 - proportion)))
+  data$preferenceScore <- x/(x + 1)
+  return(data)
+}
+

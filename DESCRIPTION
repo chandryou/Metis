@@ -5,6 +5,6 @@ Version: 0.0.1
 Date: 2019-09-21
 Author: Seng Chan You <applegna@gmail.com>
 Maintainer: Seng Chan You <applegna@gmail.com>
-Description: More about what it does (maybe more than one line)
+Description: Methods to Enable Transferring Information across OHDSI
 License: Apache 2.0
-RoxygenNote: 6.1.1
+RoxygenNote: 7.0.2
