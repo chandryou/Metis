@@ -4,7 +4,7 @@
 
 - Attendees: 고태훈, 김광수, 김이삭, 유승찬
 
-- Progress: Representation Learning Propensity Score model ideation 에 대한 소개 (유승찬)
+- Progress: Representation Learning Propensity Score model ideation 에 대한 소개 (유승찬); [slides](https://github.com/ABMI/Metis/blob/meetings/presentation/2020.07.14_Representation-learning%20PS%20model_SCYou.pdf)
 
 - To do
   - 고태훈 : BERT 등 최신 기법 적용할 수 있는 지 여부 / Embedding, Convolution 적용 여부에 대해 고려
