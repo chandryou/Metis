@@ -17,10 +17,44 @@ This version: July 24, 2020
 
 -   Drawing Deep learning model
 
-<img src="Figures/Fig_2020_07_24_1.jpg" alt="deep learning model architecture" width="1000" />
+<img src="Figures/Fig_2020_07_24_1.jpg" alt="Fig. deep learning model architecture"  />
 <p class="caption">
-deep learning model architecture
+Fig. deep learning model architecture
 </p>
+
+-   Creating cohort based on drug\_era
+    -   Identifying new user of drug with 30-day washout period among those who have at least 30-day prior observation period : 29,030,141 rows
+    -   Classification of drug\_concept\_ids using ATC 2nd and ATC 4th code: 2nd code 기준으로는 10,000건, 4th code 기준으로는 1,000건 미만인 cell 들은 무시해야될 수; ATC 2nd code 내의 distribution 을 cross-entropy 등을 기준으로 entropy가 너무 낮은 경우 무시하거나, 또는 entropy와 predicting accuracy의 관련성도 살펴볼 수 있음
+    -   ATC 2nd 를 동시에 2개 이상 사용한 사람들은 무시되어야 함.
+
+``` r
+# Create cohort table and mother cohort
+connection <- DatabaseConnector::connect(connectionDetails)
+
+# Create study cohort table structure:
+sql <- SqlRender::readSql("./inst/sql/sql_server/CreateCohortTable.sql")
+sql <- SqlRender::render(sql,
+                         cohort_database_schema = cohortDatabaseSchema,
+                         cohort_table = cohortTable)
+sql <- SqlRender::translate(sql,
+                            targetDialect = attr(connection, "dbms"))
+DatabaseConnector::executeSql(connection, sql, progressBar = FALSE, reportOverallTime = FALSE)
+
+# Insert base cohort into the cohort table
+sql <- SqlRender::readSql("./inst/sql/sql_server/base_cohort.sql")
+sql <- SqlRender::render(sql,
+                         cdm_database_schema = cdmDatabaseSchema,
+                         cohort_database_schema = cohortDatabaseSchema,
+                         cohort_table = cohortTable,
+                         cohort_definition_id = 1,
+                         minimum_prior_observation = 7)
+sql <- SqlRender::translate(sql,
+                            targetDialect = attr(connection, "dbms"))
+DatabaseConnector::executeSql(connection, sql, progressBar = FALSE, reportOverallTime = FALSE)
+
+# Disconnect
+DatabaseConnector::disconnect(connection)
+```
 
 Bengio, Yoshua, Tristan Deleu, Nasim Rahaman, Rosemary Ke, Sébastien Lachapelle, Olexa Bilaniuk, Anirudh Goyal, and Christopher Pal. 2019. “A Meta-Transfer Objective for Learning to Disentangle Causal Mechanisms.” *arXiv:1901.10912 \[Cs, Stat\]*.
 
