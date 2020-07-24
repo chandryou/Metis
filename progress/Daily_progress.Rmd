@@ -30,9 +30,12 @@ geometry: margin=1in
 
 - Drawing Deep learning model
 
-```{r, fig.cap = "deep learning model architecture", fig.align = "center", echo = F}
+```{r, fig.cap = "Fig. deep learning model architecture", fig.align = "center", echo = F}
 #library(knitr)
 knitr::include_graphics("Figures/Fig_2020_07_24_1.jpg")
 ```
 
-
+- Creating cohort based on drug_era
+    - Identifying new user of drug with 30-day washout period among those who have at least 30-day prior observation period : 29,030,141 rows
+    - Classification of drug_concept_ids using ATC 2nd and ATC 4th code: 2nd code 기준으로는 10,000건, 4th code 기준으로는 1,000건 미만인 cell 들은 무시해야될 수; ATC 2nd code 내의 distribution 을 cross-entropy 등을 기준으로 entropy가 너무 낮은 경우 무시하거나, 또는 entropy와 predicting accuracy의 관련성도 살펴볼 수 있음
+    - ATC 2nd 를 동시에 2개 이상 사용한 사람들은 무시되어야 함. 
