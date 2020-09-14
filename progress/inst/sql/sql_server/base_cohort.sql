@@ -1,13 +1,18 @@
+
+DELETE FROM @cohort_database_schema.@cohort_table where cohort_definition_id = @cohort_definition_id;
+
 INSERT INTO @cohort_database_schema.@cohort_table (
 cohort_definition_id,
 cohort_start_date,
 cohort_end_date,
-subject_id
+subject_id,
+row_id
 )
 SELECT @cohort_definition_id AS cohort_definition_id,
       cohort_start_date,
       cohort_end_date,
-      subject_id
+      subject_id,
+      ROW_NUMBER() OVER(ORDER BY subject_id, cohort_start_date ASC) AS row_id
   FROM (
     SELECT drug_era_start_date AS cohort_start_date,
     drug_era_end_date AS cohort_end_date,

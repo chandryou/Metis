@@ -1,11 +1,11 @@
 ---
 title: "Daily progress for my PhD thesis"
 author: |
-  | Seng Chan You
+| Seng Chan You
 date: |
-  |       
-  | First version: July 24, 2020
-  | This version: `r gsub("^0", "", format(Sys.time(), "%B %d, %Y"))`
+|       
+| First version: July 24, 2020
+| This version: `r gsub("^0", "", format(Sys.time(), "%B %d, %Y"))`
 output:
   github_document:
     toc: true
@@ -21,14 +21,19 @@ geometry: margin=1in
 
 ```{r, echo = F}
 #usethis::edit_r_environ()
+outputFolder <- Sys.getenv("metis_output_folder")
+
 ```
 
+```{r, echo =T}
+library(dplyr)
+```
 # 2020.07.24 (Fri).
 
 - Reviewing papers about multi-task learning
-    - @ruder_overview_2017
-    - @ramsundar_massively_2015
-    - @bengio_meta-transfer_2019
+- @ruder_overview_2017
+- @ramsundar_massively_2015
+- @bengio_meta-transfer_2019
 
 - Pharmacoepidemiology study 에서 active comparator를 사용한 new-user cohort design에서 propensity score 라는 것은 결국 비슷한 condition을 가진 사람들에서 treatment를 선택하는 환자들의 특성을 예측하는 점수가 됨. ATC 2nd는 약물의 indication을 나타내기 때문에, 같은 ATC 2nd 에 해당하는 약물을 사용한 사람들 중, 4th class를 맞추는 문제를 통해서 deep learning 학습이 가능할 수 있음. 
 
@@ -40,10 +45,10 @@ knitr::include_graphics("Figures/Fig_2020_07_24_1.jpg")
 ```
 
 - Creating cohort based on drug_era
-    - Identifying new user of drug with 30-day washout period among those who have at least 30-day prior observation period : 29,030,141 rows
-    - Classification of drug_concept_ids using ATC 2nd and ATC 4th code: 2nd code 기준으로는 10,000건, 4th code 기준으로는 1,000건 미만인 cell 들은 무시해야될 수; ATC 2nd code 내의 distribution 을 cross-entropy 등을 기준으로 entropy가 너무 낮은 경우 무시하거나, 또는 entropy와 predicting accuracy의 관련성도 살펴볼 수 있음
-    - ATC 2nd 를 동시에 2개 이상 사용한 사람들은 무시되어야 함. 
-    
+- Identifying new user of drug with 30-day washout period among those who have at least 30-day prior observation period : 29,030,141 rows
+- Classification of drug_concept_ids using ATC 2nd and ATC 4th code: 2nd code 기준으로는 10,000건, 4th code 기준으로는 1,000건 미만인 cell 들은 무시해야될 수; ATC 2nd code 내의 distribution 을 cross-entropy 등을 기준으로 entropy가 너무 낮은 경우 무시하거나, 또는 entropy와 predicting accuracy의 관련성도 살펴볼 수 있음
+- ATC 2nd 를 동시에 2개 이상 사용한 사람들은 무시되어야 함. 
+
 ```{r, echo = F}
 # Details for connectin to the server
 connectionDetails <- DatabaseConnector::createConnectionDetails(dbms = Sys.getenv("ausom_dbms"),
@@ -58,7 +63,17 @@ cohortTable <- "Metis_progress"
 oracleTempSchema = NULL
 ```
 
+# 2020.08.06 (Fri).
+
 - I generated base cohort based on drug_era
+
+```{r, echo = T, eval = T, include = F}
+#set target cohort ID
+cohortDefinitionId <- 1
+databaseId = "AUSOM 2019"
+
+samplingN = 10000#if 0, then you will use whole sample. 
+```
 
 ```{r, echo = T, eval = F, include = F}
 # Create cohort table and mother cohort
@@ -79,8 +94,8 @@ sql <- SqlRender::render(sql,
                          cdm_database_schema = cdmDatabaseSchema,
                          cohort_database_schema = cohortDatabaseSchema,
                          cohort_table = cohortTable,
-                         cohort_definition_id = 1,
-                         minimum_prior_observation = 7)
+                         cohort_definition_id = cohortDefinitionId,
+                         minimum_prior_observation = 365)
 sql <- SqlRender::translate(sql,
                             targetDialect = attr(connection, "dbms"))
 DatabaseConnector::executeSql(connection, sql, progressBar = FALSE, reportOverallTime = FALSE)
@@ -89,7 +104,665 @@ DatabaseConnector::executeSql(connection, sql, progressBar = FALSE, reportOveral
 DatabaseConnector::disconnect(connection)
 ```
 
+```{r, echo = F, eval = T, include = F}
+connection <- DatabaseConnector::connect(connectionDetails)
+
+sql <- "SELECT COUNT(*) AS ROW_COUNT, COUNT(DISTINCT subject_id) AS person_count FROM  @cohort_database_schema.@cohort_table WHERE cohort_definition_id = @cohort_definition_id"
+sql <- SqlRender::render(sql,
+                         cohort_database_schema = cohortDatabaseSchema,
+                         cohort_table = cohortTable,
+                         cohort_definition_id = cohortDefinitionId)
+sql <- SqlRender::translate(sql,
+                            targetDialect = attr(connection, "dbms"))
+cohortCount <- DatabaseConnector::querySql(connection, sql)
+DatabaseConnector::disconnect(connection)
+```
+
+```{r, echo = F, eval = T, include = T}
+knitr::kable(cohortCount, 
+             col.names = gsub("_", " ",colnames(cohortCount)),
+             caption = sprintf("Table. Counts in the target cohort in %s",databaseId))
+```
+
+- Row 수로 6,358,292. 환자수로 657,974 확인
+
+- Feature 추출
+
+```{r, echo = T, eval = T, include = F}
+remoteCovSetting <- FeatureExtraction::createCovariateSettings(useDemographicsGender = TRUE,
+                                                               # useDemographicsAge = FALSE,
+                                                               useDemographicsAgeGroup = TRUE,
+                                                               useDemographicsRace = TRUE,
+                                                               useDemographicsEthnicity = TRUE,
+                                                               useDemographicsIndexYear = TRUE,
+                                                               useDemographicsIndexMonth = TRUE,
+                                                               # useDemographicsPriorObservationTime = FALSE,
+                                                               # useDemographicsPostObservationTime = FALSE,
+                                                               # useDemographicsTimeInCohort = FALSE,
+                                                               # useDemographicsIndexYearMonth = FALSE,
+                                                               # useConditionOccurrenceAnyTimePrior = FALSE,
+                                                               # useConditionOccurrenceLongTerm = FALSE,
+                                                               # useConditionOccurrenceMediumTerm = FALSE,
+                                                               # useConditionOccurrenceShortTerm = FALSE,
+                                                               # useConditionOccurrencePrimaryInpatientAnyTimePrior = FALSE,
+                                                               # useConditionOccurrencePrimaryInpatientLongTerm = FALSE,
+                                                               # useConditionOccurrencePrimaryInpatientMediumTerm = FALSE,
+                                                               # useConditionOccurrencePrimaryInpatientShortTerm = FALSE,
+                                                               # useConditionEraAnyTimePrior = FALSE,
+                                                               # useConditionEraLongTerm = FALSE,
+                                                               # useConditionEraMediumTerm = FALSE,
+                                                               # useConditionEraShortTerm = FALSE,
+                                                               # useConditionEraOverlapping = FALSE,
+                                                               # useConditionEraStartLongTerm = FALSE,
+                                                               # useConditionEraStartMediumTerm = FALSE,
+                                                               # useConditionEraStartShortTerm = FALSE,
+                                                               # useConditionGroupEraAnyTimePrior = FALSE,
+                                                               useConditionGroupEraLongTerm = TRUE,
+                                                               useConditionGroupEraMediumTerm = TRUE,
+                                                               # useConditionGroupEraShortTerm = FALSE,
+                                                               # useConditionGroupEraOverlapping = FALSE,
+                                                               # useConditionGroupEraStartLongTerm = FALSE,
+                                                               # useConditionGroupEraStartMediumTerm = FALSE,
+                                                               # useConditionGroupEraStartShortTerm = FALSE,
+                                                               # useDrugExposureAnyTimePrior = FALSE,
+                                                               # useDrugExposureLongTerm = FALSE,
+                                                               # useDrugExposureMediumTerm = FALSE,
+                                                               # useDrugExposureShortTerm = FALSE,
+                                                               # useDrugEraAnyTimePrior = FALSE,
+                                                               useDrugEraLongTerm = TRUE,
+                                                               useDrugEraMediumTerm = TRUE,
+                                                               # useDrugEraShortTerm = FALSE,
+                                                               # useDrugEraOverlapping = FALSE,
+                                                               # useDrugEraStartLongTerm = FALSE,
+                                                               # useDrugEraStartMediumTerm = FALSE,
+                                                               # useDrugEraStartShortTerm = FALSE,
+                                                               # useDrugGroupEraAnyTimePrior = FALSE,
+                                                               # useDrugGroupEraLongTerm = FALSE,
+                                                               # useDrugGroupEraMediumTerm = FALSE,
+                                                               # useDrugGroupEraShortTerm = FALSE,
+                                                               useDrugGroupEraOverlapping = TRUE,
+                                                               # useDrugGroupEraStartLongTerm = FALSE,
+                                                               # useDrugGroupEraStartMediumTerm = FALSE,
+                                                               # useDrugGroupEraStartShortTerm = FALSE,
+                                                               # useProcedureOccurrenceAnyTimePrior = FALSE,
+                                                               useProcedureOccurrenceLongTerm = TRUE,
+                                                               useProcedureOccurrenceMediumTerm = TRUE,
+                                                               # useProcedureOccurrenceShortTerm = TRUE,
+                                                               # useDeviceExposureAnyTimePrior = FALSE,
+                                                               useDeviceExposureLongTerm = TRUE,
+                                                               useDeviceExposureMediumTerm = TRUE,
+                                                               # useDeviceExposureShortTerm = FALSE,
+                                                               # useMeasurementAnyTimePrior = FALSE,
+                                                               useMeasurementLongTerm = TRUE,
+                                                               useMeasurementMediumTerm = TRUE,
+                                                               # useMeasurementShortTerm = FALSE,
+                                                               # useMeasurementValueAnyTimePrior = FALSE,
+                                                               # useMeasurementValueLongTerm = FALSE,
+                                                               # useMeasurementValueMediumTerm = FALSE,
+                                                               # useMeasurementValueShortTerm = FALSE,
+                                                               # useMeasurementRangeGroupAnyTimePrior = FALSE,
+                                                               # useMeasurementRangeGroupLongTerm = FALSE,
+                                                               # useMeasurementRangeGroupMediumTerm = FALSE,
+                                                               # useMeasurementRangeGroupShortTerm = FALSE,
+                                                               # useObservationAnyTimePrior = FALSE,
+                                                               useObservationLongTerm = TRUE,
+                                                               useObservationMediumTerm = TRUE,
+                                                               # useObservationShortTerm = TRUE,
+                                                               # useCharlsonIndex = FALSE,
+                                                               # useDcsi = FALSE,
+                                                               # useChads2 = FALSE,
+                                                               # useChads2Vasc = FALSE,
+                                                               # useHfrs = FALSE,
+                                                               # useDistinctConditionCountLongTerm = FALSE,
+                                                               # useDistinctConditionCountMediumTerm = FALSE,
+                                                               # useDistinctConditionCountShortTerm = FALSE,
+                                                               # useDistinctIngredientCountLongTerm = FALSE,
+                                                               # useDistinctIngredientCountMediumTerm = FALSE,
+                                                               # useDistinctIngredientCountShortTerm = FALSE,
+                                                               # useDistinctProcedureCountLongTerm = FALSE,
+                                                               # useDistinctProcedureCountMediumTerm = FALSE,
+                                                               # useDistinctProcedureCountShortTerm = FALSE,
+                                                               # useDistinctMeasurementCountLongTerm = FALSE,
+                                                               # useDistinctMeasurementCountMediumTerm = FALSE,
+                                                               # useDistinctMeasurementCountShortTerm = FALSE,
+                                                               # useDistinctObservationCountLongTerm = FALSE,
+                                                               # useDistinctObservationCountMediumTerm = FALSE,
+                                                               # useDistinctObservationCountShortTerm = FALSE,
+                                                               # useVisitCountLongTerm = FALSE,
+                                                               # useVisitCountMediumTerm = FALSE,
+                                                               # useVisitCountShortTerm = FALSE,
+                                                               # useVisitConceptCountLongTerm = FALSE,
+                                                               # useVisitConceptCountMediumTerm = FALSE,
+                                                               # useVisitConceptCountShortTerm = FALSE,
+                                                               longTermStartDays = -365,
+                                                               mediumTermStartDays = -30,
+                                                               shortTermStartDays = -1,
+                                                               endDays = -1,
+                                                               includedCovariateConceptIds = c(),
+                                                               addDescendantsToInclude = FALSE,
+                                                               excludedCovariateConceptIds = c(),
+                                                               addDescendantsToExclude = FALSE,
+                                                               includedCovariateIds = c())
+
+indexCovSetting <- FeatureExtraction::createCovariateSettings(useConditionEraShortTerm = TRUE,
+                                                              useConditionGroupEraShortTerm = TRUE,
+                                                              useDrugGroupEraStartShortTerm = TRUE,
+                                                              useProcedureOccurrenceShortTerm = TRUE,
+                                                              useMeasurementShortTerm = TRUE,
+                                                              longTermStartDays = -365,
+                                                              mediumTermStartDays = -180,
+                                                              shortTermStartDays = 0,
+                                                              endDays = 0,
+                                                              includedCovariateConceptIds = c(),
+                                                              addDescendantsToInclude = FALSE,
+                                                              excludedCovariateConceptIds = c(),
+                                                              addDescendantsToExclude = FALSE,
+                                                              includedCovariateIds = c())
+covSettings <- list(remoteCovSetting, indexCovSetting)
+covariateData <- FeatureExtraction::getDbCovariateData(connectionDetails = connectionDetails,
+                                                       oracleTempSchema = oracleTempSchema,
+                                                       cdmDatabaseSchema = cdmDatabaseSchema,
+                                                       cdmVersion = "5",
+                                                       cohortTable = cohortTable,
+                                                       cohortDatabaseSchema = cohortDatabaseSchema,
+                                                       cohortTableIsTemp = FALSE,
+                                                       cohortId = cohortDefinitionId,
+                                                       rowIdField = "row_id",
+                                                       covariateSettings = covSettings,
+                                                       aggregated = FALSE)
+```
+
+```{r, echo = F, eval = F, include = F}
+FeatureExtraction::saveCovariateData(covariateData,file = file.path(outputFolder, "covariateData.zip"))
+```
 
 ```{r, echo = T, eval = F, include = F}
+outcomeCovSetting <- FeatureExtraction::createCovariateSettings(useDrugEraStartShortTerm = TRUE,
+                                                                longTermStartDays = -365,
+                                                                mediumTermStartDays = -180,
+                                                                shortTermStartDays = 0,
+                                                                endDays = 0,
+                                                                includedCovariateConceptIds = c(),
+                                                                addDescendantsToInclude = FALSE,
+                                                                excludedCovariateConceptIds = c(),
+                                                                addDescendantsToExclude = FALSE,
+                                                                includedCovariateIds = c())
+
+outcomeData <- FeatureExtraction::getDbCovariateData(connectionDetails = connectionDetails,
+                                                     oracleTempSchema = oracleTempSchema,
+                                                     cdmDatabaseSchema = cdmDatabaseSchema,
+                                                     cdmVersion = "5",
+                                                     cohortTable = cohortTable,
+                                                     cohortDatabaseSchema = cohortDatabaseSchema,
+                                                     cohortTableIsTemp = FALSE,
+                                                     cohortId = cohortDefinitionId,
+                                                     rowIdField = "row_id",
+                                                     covariateSettings = outcomeCovSetting,
+                                                     aggregated = FALSE)
+
+FeatureExtraction::saveCovariateData(outcomeData,file = file.path(outputFolder, "outcomeData.zip"))
+```
+
+```{r, echo = F, eval = T, include = F}
+covariateData <- FeatureExtraction::loadCovariateData(file.path(outputFolder, "covariateData.zip"))
+outcomeData <- FeatureExtraction::loadCovariateData(file.path(outputFolder, "outcomeData.zip"))
+```
+
+```{r, echo = F, eval = F, include = F}
+# Skip!
+# rowIds <- RSQLite::dbGetQuery(covariateData, "SELECT DISTINCT rowId FROM covariates;")
+# rowIdsInOutcome <- RSQLite::dbGetQuery(outcomeData, "SELECT DISTINCT rowId FROM covariates;")
+nrow(rowIds)==nrow(rowIdsInOutcome) #TRUE
+length(unique(rowIds$rowId))==length(unique(rowIdsInOutcome$rowId)) #TRUE
+```
+
+```{r, echo = T, eval = F, include = F}
+#Sampling 
+if(samplingN){
+  # for random sampling
+  # rowIds <- RSQLite::dbGetQuery(covariateData, sprintf("SELECT DISTINCT rowId FROM covariates LIMIT %d;", samplingN))[[1]]
+  
+  rowIds <- seq(samplingN)
+  
+  covariateData <- FeatureExtraction::filterByRowId(covariateData,rowIds)
+  outcomeData <- FeatureExtraction::filterByRowId(outcomeData,rowIds)
+  
+  FeatureExtraction::saveCovariateData(covariateData,file = file.path(outputFolder, "covariateDataSampled.zip"))
+  FeatureExtraction::saveCovariateData(outcomeData,file = file.path(outputFolder, "outcomeDataSampled.zip"))
+}
+
+```
+
+```{r, echo = F, eval = T, include = F}
+if(samplingN){
+  covariateData <- FeatureExtraction::loadCovariateData(file.path(outputFolder, "covariateDataSampled.zip"))
+  outcomeData <- FeatureExtraction::loadCovariateData(file.path(outputFolder, "outcomeDataSampled.zip"))
+}
+```
+
+```{r, echo = F, eval = F, include = F}
+covariateData <- Metis::mapCov(covariateData, mapping = NULL)
+outcomeData <- Metis::mapCov(outcomeData, mapping = NULL)
+
+Andromeda::saveAndromeda(covariateData, file = file.path(outputFolder, "newCovariateData.zip"))
+Andromeda::saveAndromeda(outcomeData, file = file.path(outputFolder, "newOutcomeData.zip"))
+covariateData <- Andromeda::loadAndromeda(file.path(outputFolder, "newCovariateData.zip"))
+outcomeData <- Andromeda::loadAndromeda(file.path(outputFolder, "newOutcomeData.zip"))
+saveRDS(as.data.frame(covariateData$mapping), file.path(outputFolder, "map.rds"))
+
+```
+
+
+```{r, echo = F, eval = F, include = F}
+###Preprocessing for DATA
+data <- Metis::andromedaToSparseM(andromedaCovariate = covariateData$covariates,
+                                  fileName = file.path(outputFolder, "covariateData.mtx.gz"), 
+                                  batchSize = 100000, append = F)
+
+outcome <- Metis::andromedaToSparseM(andromedaCovariate = outcomeData$covariates,
+                                     fileName = file.path(outputFolder, "outcomeData.mtx.gz"), 
+                                     batchSize = 10000, append = F)
+
+```
+
+
+```{r, echo = F, eval = F, include = F}
+rowNum = as.data.frame(covariateData$covariates %>% dplyr::count())[[1]]
+covariateMatrixFileName = file.path(outputFolder, "covariateData.mtx.gz")
+
+startWritingMMgz(fileName = covariateMatrixFileName, maxX=maxX, maxY=maxY, rowNum, mType = "real", removeIfFileExist = TRUE)
+
+Andromeda::batchApply(covariateData$covariates, writeMMgz, fileName = covariateMatrixFileName,batchSize = 10000)
+```
+
+```{r, echo = F, eval = F, include = F}
+#covMat <- Matrix::readMM(covariateMatrixFileName)
+covMat <- readBigMM(covariateMatrixFileName)
+object.size(covMat)/(2^(30)) #24.5GB
+covMat <- as(covMat, "dgCMatrix") # To decrease the size of the object
+object.size(covMat)/(2^(30)) #18.4GB 
+
+sparsity <- length(covMat@x) / covMat@Dim[1] / covMat@Dim[2]
+sparsity
+```
+
+
+```{r, echo = F, eval = F, include = F}
+outcomeWeight <- 1/(sum(outcome)/length(outcome))
+outcomeWeight #35.76255
+
+##Define the encoder and decoder
+originalDim = dim(data)[2]
+targetDim = dim(outcome)[2]
+
+input_layer <- 
+  keras::layer_input(shape = originalDim) 
+
+lassoRegularizer <- keras::regularizer_l1(l = 1e-4)
+ridgeRegularizer <- keras::regularizer_l2(l = 0.01)
+elasticRegularizer <- keras::regularizer_l1_l2(l1 = 0.01, l2 = 0.01)
+
+K <- keras::backend()
+
+weighted_mse <- function(y_true, y_pred){
+  # convert tensors to R objects
+  #y_true   <- K$eval(y_true)
+  #y_pred   <- K$eval(y_pred)
+  #weights  <- K$eval(outcomeWeight)
+  # convert to tensor
+  #return(K$constant(loss))
+  
+  keras::k_mean(keras::k_abs(y_true - y_pred)*keras::k_max(y_true*outcomeWeight, 1))
+  
+}
+
+weighted_crossentropy <- function(y_true, y_pred){
+  keras::k_binary_crossentropy(y_true, y_pred)*keras::k_max( y_true*outcomeWeight, 1)
+  #keras::k_sum(-((y_true*keras::k_log(keras::k_abs(y_pred)))+(1-y_true)*keras::k_log(keras::k_abs(1-y_pred))))*keras::k_max(y_true*outcomeWeight, 1)
+}
+
+metric_weighted_mse <- keras::custom_metric("weighted_mse", function(y_true, y_pred) {
+  weighted_mse(y_true, y_pred)
+})
+
+metric_f1 <- function (y_true,y_pred) {
+  y_pred <- keras::k_round(y_pred)
+  precision <- keras::k_sum(y_pred*y_true)/(keras::k_sum(y_pred)+keras::k_epsilon())
+  recall    <- keras::k_sum(y_pred*y_true)/(keras::k_sum(y_true)+keras::k_epsilon())
+  (2*precision*recall)/(precision+recall+keras::k_epsilon())
+} 
+
+# encoder <-
+#   input_layer %>%
+#    keras::layer_dense(units = targetDim*2, activation = "relu", activity_regularizer = lassoRegularizer
+#                       ) %>%
+#   keras::layer_batch_normalization() %>%
+#   keras::layer_dropout(rate = 0.2) %>%
+  # keras::layer_dense(units = 1000, activation = "relu", kernel_regularizer = NULL) %>%
+  # keras::layer_dropout(rate = 0.1) %>%
+  # keras::layer_dense(units = 250, activation = "relu", kernel_regularizer = NULL) %>%
+#  keras::layer_dense(units = targetDim, activity_regularizer = NULL,activation = "sigmoid") # 2 dimensions for the output layer
+
+encoder <-
+  input_layer %>%
+  keras::layer_dense(units = 1024, 
+                     activation = "relu") %>%
+  keras::layer_dropout(rate = 0.2) %>%
+  keras::layer_dense(units = 512,
+                     activation = "relu") %>%
+  keras::layer_dropout(rate = 0.2) %>%
+  keras::layer_dense(units = 248,
+                     activation = "relu") %>%
+  keras::layer_dropout(rate = 0.2) %>%
+  keras::layer_dense(units = 124, 
+                     activation = "relu")
+  
+  # 2 dimensions for the output layer 
+
+##Consider weight regularization 
+#
+logistic <- 
+  encoder %>%
+  keras::layer_dense(activation = "sigmoid",units = targetDim, kernel_regularizer = lassoRegularizer)
+
+decoder <- 
+  encoder %>% 
+  # keras::layer_dense(units = targetDim*2, activation = "relu", kernel_regularizer = NULL) %>% 
+  # keras::layer_dropout(rate = 0.2) %>% 
+  # keras::layer_dense(units = 1000, activation = "relu", kernel_regularizer = NULL) %>%
+  # keras::layer_dropout(rate = 0.1) %>%
+  # keras::layer_dense(units = 5000, activation = "sigmoid", kernel_regularizer = NULL) %>%
+  keras::layer_dense(units = dim(data)[2], activation = "relu") #the original dimension
+
+##compile and train the autoencoder
+autoencoder_model <- keras::keras_model(inputs = input_layer, outputs = logistic)
+summary(autoencoder_model)
+
+
+autoencoder_model %>% keras::compile(
+  loss=weighted_crossentropy,#'mean_squared_error',#weighted_mse
+  optimizer= keras::optimizer_adam(lr = learningRate),#lr=1e-2),
+  metrics = c("binary_crossentropy", "binary_accuracy")
+)
+
+valEarlyStopping = keras::callback_early_stopping(monitor = "val_loss", 
+                                               patience = 40,
+                                               mode="auto",
+                                               min_delta = 0)
+valReduceLr = keras::callback_reduce_lr_on_plateau(monitor="val_loss", factor =0.1, 
+                                              patience = 15,mode = "auto", min_delta = 1e-5, cooldown = 0, min_lr = 0)
+
+earlyStopping = keras::callback_early_stopping(monitor = "loss", 
+                                               patience = 40,
+                                               mode="auto",
+                                               min_delta = 0)
+reduceLr = keras::callback_reduce_lr_on_plateau(monitor="loss", factor =0.1, 
+                                              patience = 15,mode = "auto", min_delta = 1e-5, cooldown = 0, min_lr = 0)
+#summary(autoencoder_model)
+
+
+##Batch-size deep learning
+
+#Extract validation set first- 20%
+
+
+valProp = 0
+valNum = 0
+seedNum = 1
+batchSize=5000
+epochNum = 10
+
+set.seed(seedNum)
+if(valProp){
+  valInd <- sample (seq(dim(data)[1]), size = floor(dim(data)[1]*valProp), replace = F)
+  trainInd <- sample(seq(dim(data)[1][-valInd]))
+} else {
+  trainInd <- sample(seq(dim(data)[1]))
+  valInd <- 0
+}
+
+steps_per_epoch <- ceiling((length(trainInd)-length(valInd))/batchSize) #63583
+
+sampling_generator <- function(data, outcome, batchSize, steps_per_epoch, trainInd, v = 0){
+  value <- v
+  
+  function(){
+    value <<- value + 1
+    if (value > steps_per_epoch) value <<- 1
+    startV = (value-1)* batchSize + 1
+    endV = min(value * batchSize,length(trainInd))
+    rows = trainInd[startV:endV]
+    
+    list(data[rows, ], outcome[rows,])
+  }
+}
+
+##train onto itself
+gc()
+if(valProp){
+  history <- autoencoder_model %>% keras::fit_generator(sampling_generator(data,outcome,batchSize, steps_per_epoch, trainInd),
+                                                      steps_per_epoch = steps_per_epoch,
+                                                      epochs=epochNum,
+                                                      validation_data=list(data[valInd,],
+                                                                           outcome[valInd,]),
+                                                      callbacks=list(valEarlyStopping,valReduceLr))
+} else {
+  history <- autoencoder_model %>% keras::fit_generator(sampling_generator(data,outcome,batchSize, steps_per_epoch, trainInd),
+                                                      steps_per_epoch = steps_per_epoch,
+                                                      epochs=epochNum,
+                                                      callbacks=list(earlyStopping,reduceLr)
+                                                      )
+}
+
+
+
+# history <-
+#   autoencoder_model %>%
+#   keras::fit(x = data,
+#              y = outcome,
+#              batch_size = batchSize,
+#              epochs = epochNum,
+#              shuffle = FALSE,
+#              validation_split = 0.1,
+#              callbacks = list(earlyStopping, reduceLr)
+#              )
+
+autoencoder_model %>% keras::save_model_hdf5(file.path(outputFolder,"autoencoder_model.h5"))
+# autoencoder_weights <- 
+#   autoencoder_model %>%
+#   keras::get_weights()
+autoencoder_model %>% keras::save_model_weights_hdf5(file.path(outputFolder,"autoencoder_model_weights.h5"),overwrite = TRUE)
+
+```
+
+```{r, echo = F, eval = F, include = F}
+encoder_model <- keras::keras_model(inputs = input_layer, outputs = encoder)
+encoder_model %>% keras::load_model_weights_hdf5(file.path(outputFolder,"autoencoder_model_weights.h5"), skip_mismatch = TRUE, by_name = TRUE)
+encoder_model %>% keras::compile(
+  loss= weighted_crossentropy,#'mean_squared_error',#weighted_mse,#'mean_squared_error',#weighted_mse
+  optimizer= keras::optimizer_adam(lr=learningRate),
+  metrics = c("binary_crossentropy", "accuracy",metric_f1)
+)
+```
+
+
+
+
+```{r, echo = F, eval = F, include = F}
+###Preprocessing for OUTCOME
+ParallelLogger::logDebug(paste0('Max covariateId in covariates: ',as.data.frame(outcomeData$covariates %>% dplyr::summarise(max = max(covariateId, na.rm=T)))))
+ParallelLogger::logDebug(paste0('# covariates in covariateRef: ', nrow(outcomeData$covariateRef)))
+ParallelLogger::logDebug(paste0('Max rowId in covariates: ', as.data.frame(outcomeData$covariates %>% dplyr::summarise(max = max(rowId, na.rm=T)))))
+
+maxY <- as.data.frame(outcomeData$covariates %>% dplyr::summarise(max=max(.data$covariateId, na.rm = TRUE)))$max
+ParallelLogger::logDebug(paste0('Max newCovariateId in mapping: ',maxY))
+maxX <- as.data.frame(outcomeData$covariates %>% dplyr::summarise(max=max(rowId, na.rm = TRUE)))$max
+ParallelLogger::logDebug(paste0('Max rowId in population: ',maxX))
+
+rowNum = as.data.frame(outcomeData$covariates %>% dplyr::count())[[1]]
+outcomeMatrixFileName = file.path(outputFolder, "outcomeData.mtx.gz")
+
+startWritingMMgz(fileName = outcomeMatrixFileName, maxX=maxX, maxY=maxY, rowNum, mType = "real", removeIfFileExist = TRUE)
+
+Andromeda::batchApply(outcomeData$covariates, writeMMgz, fileName = outcomeMatrixFileName,batchSize = 10000)
+
+#system(sprintf("gzip -d %s", outcomeMatrixFileName))
+#outcomeMat <- Matrix::readMM(outcomeMatrixFileName)
+#outcomeMat <- readBigMM(file.path(outputFolder,"outcomeData.mtx"))
+outcomeMat <- readBigMM(outcomeMatrixFileName)
+outcomeMat <- as(outcomeMat, "dgCMatrix") # To decrease the size of the object
+
+```
+
+
+
+```{r, echo = F, eval = F, include = F}
+
+
+tempInput <- Andromeda::batchApply(covariateData$covariates, convertData, maxX, maxY, batchSize = 1000000)
+object.size(tempInput)/(10^9) # 20.2GB
+
+input <- Reduce("+", tempInput)
+rm(tempInput)
+
+```
+
+
+
+
+```{r, echo = F, eval = F, include = F}
+
+convertData <- function(batch, maxX, maxY) {
+  data <- Matrix::sparseMatrix(i = 1,
+                             j = 1,
+                             x = 0,
+                             dims = c(maxX,maxY))
+  data <- data + Matrix::sparseMatrix(i = as.data.frame(batch %>% select(rowId))$rowId,
+                                      j = as.data.frame(batch %>% select(covariateId))$covariateId,
+                                      x = as.data.frame(batch %>% select(covariateValue))$covariateValue,
+                                      dims=c(maxX,maxY))
+  return(data)
+}
+
+result <- Andromeda::batchApply(covariateData$covariates, convertData, maxX, maxY, batchSize = 10000)
+
+object.size(result)/(10^6) #6073 MB #89.6MB
+result2 <- lapply(result,sum)
+
+result2 <- Reduce("+", result)
+```
+
+```{r, echo = F, eval = F, include = F}
+data <- Matrix::sparseMatrix(i = 1,
+                             j = 1,
+                             x = 0,
+                             dims = c(maxX,maxY))
+convertData <- function(batch) {
+  data <<- data + Matrix::sparseMatrix(i = as.data.frame(batch %>% select(rowId))$rowId,
+                                       j = as.data.frame(batch %>% select(covariateId))$covariateId,
+                                       x = as.data.frame(batch %>% select(covariateValue))$covariateValue,
+                                       dims=c(maxX,maxY))
+  return(NULL)
+}
+
+saveRDS(data,file.path(outputFolder, "data.rds"))
+
+Andromeda::batchApply(covariateData$covariates, convertData, batchSize = 100000)
+fileName = NULL
+if(!is.null(fileName)){
+  Andromeda::saveAndromeda(covariateData, fileName = fileName, maintainConnection = TRUE)
+}
+
+```
+
+
+```{r, echo = F, eval = F, include = F}
+###Preprocessing for OUTCOME
+ParallelLogger::logDebug(paste0('Max covariateId in covariates: ',as.data.frame(outcomeData$covariates %>% dplyr::summarise(max = max(covariateId, na.rm=T)))))
+ParallelLogger::logDebug(paste0('# covariates in covariateRef: ', nrow(outcomeData$covariateRef)))
+ParallelLogger::logDebug(paste0('Max rowId in covariates: ', as.data.frame(outcomeData$covariates %>% dplyr::summarise(max = max(rowId, na.rm=T)))))
+
+maxY <- as.data.frame(outcomeData$covariates %>% dplyr::summarise(max=max(.data$covariateId, na.rm = TRUE)))$max
+ParallelLogger::logDebug(paste0('Max newCovariateId in mapping: ',maxY))
+maxX <- as.data.frame(outcomeData$covariates %>% dplyr::summarise(max=max(rowId, na.rm = TRUE)))$max
+ParallelLogger::logDebug(paste0('Max rowId in population: ',maxX))
+
+outcome <- Matrix::sparseMatrix(i = 1,
+                                j = 1,
+                                x = 0,
+                                dims = c(maxX,maxY))
+convertData <- function(batch) {
+  outcome <<- outcome + Matrix::sparseMatrix(i = as.data.frame(batch %>% select(rowId))$rowId,
+                                             j = as.data.frame(batch %>% select(covariateId))$covariateId,
+                                             x = as.data.frame(batch %>% select(covariateValue))$covariateValue,
+                                             dims=c(maxX,maxY))
+  return(NULL)
+}
+
+saveRDS(outcome,file.path(outputFolder, "outcome.rds"))
+Andromeda::batchApply(outcomeData$covariates, convertData, batchSize = 100000)
+fileName = NULL
+if(!is.null(fileName)){
+  Andromeda::saveAndromeda(outcomeData, fileName = fileName, maintainConnection = TRUE)
+}
+```
+
+```{r, echo = F, eval = F, include = F}
+data <- covMat
+rm(covMat)
+
+outcome <- outcomeMat
+rm(outcomeMat)
+
+gc()
+
+###AutoEncoder
+epochNum = 500
+#targetDim = 100
+learningRate = 1e-3#1e-2
+batchSize = 1000
+````
+
+```{r, echo = F, eval = F, include = F}
+
+dim(data) #10000 19684
+dim(outcome) #10000 882
+
+max(data) #1
+max(outcome) #1
+````
+
+```{r, echo = F, eval = F, include = F}
+
+encoder_model <- keras::keras_model(inputs = input_layer, outputs = encoder)
+encoder_model %>% keras::load_model_weights_hdf5(file.path(outputFolder,"autoencoder_model_weights.h5"), skip_mismatch = TRUE, by_name = TRUE)
+encoder_model %>% keras::compile(
+  loss= weighted_crossentropy,#'mean_squared_error',#weighted_mse,#'mean_squared_error',#weighted_mse
+  optimizer= keras::optimizer_adam(lr=learningRate),
+  metrics = c("binary_crossentropy", "accuracy",metric_f1)
+)
+
+
+#0.6135
+#binary_crossentropy: 1.4176 - binary_accuracy: 0.9058 - val_loss: 31.9301 - val_binary_crossentropy: 1.4257 -val_binary_accuracy: 0.9053
+#loss: 15.0099 - binary_crossentropy: 1.3001 - binary_accuracy: 0.9135 - val_loss: 15.5911 - val_binary_crossentropy: 1.3106 - val_binary_accuracy: 0.9130
+#loss: 2.6108 - binary_crossentropy: 0.0785 - binary_accuracy: 0.9756 - val_loss: 2.8138 - val_binary_crossentropy: 0.0809 - val_binary_accuracy: 0.9748
+#loss: 2.6155 - binary_crossentropy: 0.0787 - binary_accuracy: 0.9763 - val_loss: 2.8157 - val_binary_crossentropy: 0.0809 - val_binary_accuracy: 0.9755
+#loss: 5.6514 - binary_crossentropy: 0.0793 - binary_accuracy: 0.9917 - val_loss: 6.4818 - val_binary_crossentropy: 0.0909 - val_binary_accuracy: 0.9904
+#Epoch200 loss: 6.2063 - binary_crossentropy: 0.1765 - binary_accuracy: 0.9841 - val_loss: 6.2436 - val_binary_crossentropy: 0.1787 - val_binary_accuracy: 0.9838
+#Epoch200 loss: 6.0014 - binary_crossentropy: 0.1690 - binary_accuracy: 0.9876 - val_loss: 6.0218 - val_binary_crossentropy: 0.1706 - val_binary_accuracy: 0.9870
+
+#autoencoder_model <- keras::load_model_hdf5(file.path(exportFolder,"autoencoder_model.h5"))
+#encoder_model <- keras::load_model_hdf5(file.path(exportFolder,"encoder_weight.h5"))
+
+
+# encodedData <- autoencoder_model %>% 
+#   keras::predict_on_batch (data[1:100,])
+# 
+# str(encodedData)
+# hist(encodedData)
+# encodedData[1:10,1:50]
+
+
 
 ```
